@@ -55,7 +55,28 @@ function jewelsModel() {
   return g;
 }
 
-const BUILDERS = { watch: watchModel, phone: phoneModel, jewels: jewelsModel };
+function goldModel() {
+  const g = new THREE.Group();
+  const gold = lam('#ffcf4d', '#6a4a00', 0.7);
+  const bar = mesh(new THREE.BoxGeometry(2.4, 0.9, 1.3), gold, 0, 0.45, 0);
+  const top = mesh(new THREE.BoxGeometry(2.0, 0.12, 0.95), lam('#ffe58a', '#6a4a00', 0.7), 0, 0.95, 0);
+  const stamp = mesh(new THREE.BoxGeometry(0.9, 0.03, 0.45), lam('#d9a520'), 0, 1.02, 0);
+  g.add(bar, top, stamp);
+  return g;
+}
+
+function ringModel() {
+  const g = new THREE.Group();
+  const band = mesh(new THREE.TorusGeometry(0.32, 0.08, 8, 20), lam('#e8eaf6', '#555a70', 0.6), 0, 0.4, 0);
+  const setting = mesh(new THREE.ConeGeometry(0.14, 0.18, 6), lam('#e8eaf6'), 0, 0.78, 0);
+  const gem = mesh(new THREE.OctahedronGeometry(0.24), new THREE.MeshBasicMaterial({ color: '#bff6ff' }), 0, 0.98, 0);
+  gem.scale.y = 0.8;
+  g.add(band, setting, gem);
+  g.userData.spin = gem;
+  return g;
+}
+
+const BUILDERS = { watch: watchModel, phone: phoneModel, jewels: jewelsModel, gold: goldModel, ring: ringModel };
 const MARKER_GEO = new THREE.OctahedronGeometry(0.22);
 
 export class ItemView {
@@ -63,7 +84,8 @@ export class ItemView {
     this.id = id;
     this.def = VALUABLE_BY_ID[id];
     this.group = BUILDERS[id]();
-    this.marker = new THREE.Mesh(MARKER_GEO, new THREE.MeshBasicMaterial({ color: '#ffd23f' }));
+    this.markerColor = this.def.rare ? '#bff6ff' : this.def.heavy ? '#ff8c42' : '#ffd23f';
+    this.marker = new THREE.Mesh(MARKER_GEO, new THREE.MeshBasicMaterial({ color: this.markerColor }));
     this.marker.scale.y = 1.5;
     scene.add(this.group, this.marker);
     this.state = null;
@@ -71,7 +93,8 @@ export class ItemView {
 
   /** pos/ry = where to draw it; carried = held above someone's head; targeted = the local player can grab it. */
   update(time, pos, ry, { carried, targeted, delivered }) {
-    const lift = carried ? 1.08 + Math.sin(time * 5) * 0.03 : 0;
+    const lift = carried ? (this.def.heavy ? 1.0 : 1.08) + Math.sin(time * 5) * 0.03 : 0;
+    if (this.group.userData.spin) this.group.userData.spin.rotation.y = time * 2;
     this.group.position.set(pos[0], pos[1] + lift, pos[2]);
     this.group.rotation.y = ry;
     const s = carried ? 0.85 : 1;
@@ -82,7 +105,7 @@ export class ItemView {
       const h = this.def.size[1];
       this.marker.position.set(pos[0], pos[1] + h + 0.7 + Math.sin(time * 3 + pos[0]) * 0.12, pos[2]);
       this.marker.rotation.y = time * 2;
-      this.marker.material.color.set(targeted ? '#ffffff' : '#ffd23f');
+      this.marker.material.color.set(targeted ? '#ffffff' : this.markerColor);
       const ms = targeted ? 1.4 : 1;
       this.marker.scale.set(ms, ms * 1.5, ms);
     }

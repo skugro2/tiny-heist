@@ -24,7 +24,8 @@ export class Hud {
       .join('');
   }
 
-  setLoot(n, total) {
+  setLoot(n, total, money) {
+    $('hudMoney').textContent = `$${money.toLocaleString('en-US')}`;
     const el = $('hudLoot');
     el.textContent = `VALUABLES: ${n} / ${total}`;
     if (this.lastLoot !== -1 && n > this.lastLoot) {
@@ -57,7 +58,27 @@ export class Hud {
     if (show) $('hudSpottedBar').style.width = `${Math.round(level * 100)}%`;
   }
 
-  setAlarm(on) { $('alarmBanner').hidden = !on; }
+  setAlarm(on) {
+    clearTimeout(this.alarmTimer);
+    $('alarmBanner').hidden = !on;
+    // Flash the big banner, then leave the police countdown on screen.
+    if (on) this.alarmTimer = setTimeout(() => { $('alarmBanner').hidden = true; }, 3000);
+  }
+
+  setPolice(seconds) {
+    const el = $('hudPolice');
+    el.hidden = seconds === null;
+    if (seconds === null) return;
+    const s = Math.max(0, Math.ceil(seconds));
+    el.textContent = `POLICE IN ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    el.classList.toggle('urgent', s <= 10);
+  }
+
+  setStatus(text) {
+    const el = $('hudStatus');
+    el.hidden = !text;
+    if (text && el.textContent !== text) el.textContent = text;
+  }
 
   setLockHint(show) { $('lockHint').hidden = !show; }
 
@@ -71,12 +92,26 @@ export class Hud {
     while (box.children.length > 4) box.firstChild.remove();
   }
 
+  /** info = { failed, time, alarms, money, rare, record } or null to hide. */
   showComplete(info) {
     if (!info) { $('completeOverlay').hidden = true; return; }
-    const secs = Math.round(info.time / 1000);
-    const time = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    const alarms = info.alarms === 0 ? 'without a single alarm' : info.alarms === 1 ? 'with 1 alarm' : `with ${info.alarms} alarms`;
-    $('completeStats').textContent = `Your crew stole all 3 valuables in ${time}, ${alarms}.`;
+    const title = $('completeTitle');
+    const money = `$${(info.money || 0).toLocaleString('en-US')}`;
+    if (info.failed) {
+      title.textContent = 'BUSTED';
+      title.classList.add('failed');
+      $('completeStats').textContent = `The police arrived before you got out. You had stashed ${money}.`;
+      $('completeRecord').textContent = '';
+    } else {
+      title.textContent = 'HEIST COMPLETE';
+      title.classList.remove('failed');
+      const secs = Math.round(info.time / 1000);
+      const time = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+      const alarms = info.alarms === 0 ? 'without a single alarm' : info.alarms === 1 ? 'with 1 alarm' : `with ${info.alarms} alarms`;
+      const ring = info.rare ? ' You even found the diamond ring!' : ' Somewhere in the store a diamond ring was hidden...';
+      $('completeStats').textContent = `Your crew stole ${money} in ${time}, ${alarms}.${ring}`;
+      $('completeRecord').textContent = info.record || '';
+    }
     $('completeOverlay').hidden = false;
   }
 

@@ -59,7 +59,7 @@ function cleanName(raw) {
   return name || 'Thief';
 }
 
-function onConnection(ws) {
+function onConnection(ws, roomOptions) {
   let room = null;
   let player = null;
   const fail = (msg) => ws.send(JSON.stringify({ t: 'err', msg }));
@@ -72,7 +72,7 @@ function onConnection(ws) {
     if (!player) {
       if (msg.t === 'create') {
         const code = makeRoomCode();
-        room = new Room(code, (r) => rooms.delete(r.code));
+        room = new Room(code, (r) => rooms.delete(r.code), roomOptions);
         rooms.set(code, room);
         player = room.addPlayer(ws, cleanName(msg.name));
         console.log(`[room ${code}] created by ${player.name}`);
@@ -98,9 +98,10 @@ function onConnection(ws) {
   });
 }
 
-export function startServer(port = Number(process.env.PORT) || 3000) {
+/** options are passed to every room (tests use them to switch off the cat, camera, etc.). */
+export function startServer(port = Number(process.env.PORT) || 3000, options = {}) {
   const server = http.createServer(serveStatic);
-  attachWebSocketServer(server, '/ws', onConnection);
+  attachWebSocketServer(server, '/ws', (ws) => onConnection(ws, options));
 
   // Heartbeat: drop connections that stopped answering (closed laptops, lost Wi-Fi).
   const heartbeat = setInterval(() => {

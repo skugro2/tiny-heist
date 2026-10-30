@@ -41,6 +41,16 @@ export class Sfx {
   deliver() { [660, 830, 990].forEach((f, i) => this.tone(f, 0.16, { type: 'triangle', vol: 0.12, delay: i * 0.08 })); }
   complete() { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.3, { type: 'triangle', vol: 0.14, delay: i * 0.12 })); }
 
+  boing() { this.tone(180, 0.35, { type: 'sine', vol: 0.16, to: 720 }); }
+  snap() { this.tone(1800, 0.05, { type: 'square', vol: 0.2, to: 300 }); this.tone(120, 0.12, { type: 'triangle', vol: 0.2, delay: 0.03 }); }
+  meow() {
+    this.tone(520, 0.18, { type: 'sawtooth', vol: 0.07, to: 820 });
+    this.tone(820, 0.4, { type: 'sawtooth', vol: 0.07, to: 380, delay: 0.17 });
+  }
+  swat() { this.tone(900, 0.08, { type: 'square', vol: 0.15, to: 200 }); this.tone(90, 0.3, { type: 'triangle', vol: 0.22, delay: 0.05, to: 50 }); }
+  beep() { this.tone(1000, 0.08, { type: 'square', vol: 0.08 }); }
+  bump() { this.tone(140, 0.15, { type: 'triangle', vol: 0.16, to: 90 }); }
+
   alarmOn() {
     if (!this.ctx || this.siren) return;
     const osc = this.ctx.createOscillator();

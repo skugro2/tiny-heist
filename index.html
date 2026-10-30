@@ -27,7 +27,7 @@
       <span class="logo-tiny">TINY</span>
       <span class="logo-heist">HEIST</span>
     </h1>
-    <p class="pitch">The corner shop is closed. You and your crew are the size of toys. Grab three valuables and get out before the camera catches you.</p>
+    <p class="pitch">The corner shop is closed. You and your crew are the size of toys. Grab the loot, dodge the camera, the traps and the shop cat, and get out before the police arrive.</p>
 
     <section class="tag" aria-label="Join a heist">
       <span class="tag-hole" aria-hidden="true"></span>
@@ -61,8 +61,11 @@
     </div>
 
     <div class="hud-loot">
-      <div id="hudLoot" class="hud-loot-count">VALUABLES: 0 / 3</div>
+      <div id="hudLoot" class="hud-loot-count">VALUABLES: 0 / 4</div>
+      <div id="hudMoney" class="hud-money">$0</div>
+      <div id="hudPolice" class="hud-police" hidden></div>
       <div id="hudCarry" class="hud-carry" hidden></div>
+      <div id="hudStatus" class="hud-status" hidden></div>
       <div id="hudSpotted" class="hud-spotted" hidden>
         <span>The camera is spotting you</span>
         <div class="meter"><div id="hudSpottedBar" class="meter-fill"></div></div>
@@ -87,8 +90,9 @@
   <!-- Heist complete -->
   <div id="completeOverlay" class="overlay" hidden>
     <div class="overlay-card">
-      <h2 class="overlay-title">HEIST COMPLETE</h2>
+      <h2 id="completeTitle" class="overlay-title">HEIST COMPLETE</h2>
       <p id="completeStats" class="overlay-stats"></p>
+      <p id="completeRecord" class="overlay-record"></p>
       <button id="restartBtn" class="btn btn-primary" type="button">Plan another heist</button>
       <p class="overlay-note">Restarts the store for everyone in the room.</p>
     </div>

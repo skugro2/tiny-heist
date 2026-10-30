@@ -14,7 +14,19 @@ This is a vertical-slice demo: one level, one objective, one security mechanic, 
 | E | Pick up / drop a valuable |
 | Shift | Sprint |
 
-The three valuables are the **golden watch** (bottom shelf of the left aisle), the **luxury phone** (display table by the window; climb the soda can and box) and the **jewelry box** (checkout counter; climb the staircase of boxes). Walk into the yellow "LOOT HERE" zone by the exit while carrying one to stash it. Hide behind boxes and shelves when the camera's yellow cone sweeps over you; if it sees you for about 1.3 seconds, the alarm goes off.
+### The heist
+
+Steal the **golden watch**, **luxury phone**, **jewelry box** and **gold bar** and bring them to the yellow "LOOT HERE" zone by the exit. Loot is placed on random spots every heist, and the money you stash is counted at the end (your best run is saved in the browser).
+
+- **Gold bar:** heavy. One thief can only drag it slowly; two thieves holding it (both press E) carry it much faster. Walk too far apart and it falls.
+- **Diamond ring:** optional secret bonus worth $8,000, hidden somewhere hard to reach.
+- **Security camera:** if its yellow cone watches you for about 1.3 seconds, the alarm goes off and the police arrive in 60 seconds. If you haven't stashed all four main valuables by then: BUSTED.
+- **Camera switch:** a red pad on the floor at the back right. While anyone stands on it, the camera is off.
+- **The cat:** sleeps on its purple cushion at the back. Sprinting nearby, dropping loot, snapping traps or the alarm wake it up. If it sees you it hunts you, and if it reaches you it swats you back to the entrance (you drop what you carry). It's faster than walking but slower than sprinting, it's too big to get under the display table, and it can't reach you on high places like the counter.
+- **Mousetraps:** step on one and you're stuck for 4 seconds, unless a friend frees you (E).
+- **Robot vacuum:** drives a loop around the shop floor. It shoves you if it bumps you, but you can jump on and ride it.
+- **Trampolines:** pink rubber bands on the floor launch you up (one next to the counter, one next to the crates).
+- **Teamwork:** you can stand on a friend's head to reach higher places.
 
 ## Tech stack
 
@@ -101,6 +113,5 @@ The whole store is merged into a few meshes that use vertex colours, so it rende
 
 - Movement is client-simulated. The server blocks teleporting and leaving the map, but doesn't re-run collision, so a modified client could walk through shelves. That's normal for a prototype and fine for friends playing together.
 - Valuables don't collide with players or each other; they are held above your head or rest on surfaces.
-- The alarm is cosmetic (red lights, banner, siren for 10 seconds) and is counted in the end-of-heist summary; it doesn't end the heist.
 - There's no reconnect: if your connection drops, use **Back to start** and rejoin with the same code.
 - Touch controls aren't implemented; a keyboard and mouse (or trackpad) are needed.

@@ -86,7 +86,7 @@ shelfUnit(-10, -16, 6, 0);    // shelf B
 // ---------- Checkout counter + climbable staircase of stuff ----------
 add({ shape: 'counter', x: 25, y: 0, z: 9.5, w: 14, h: 10, d: 7, color: '#4f4386' });
 add({ shape: 'register', x: 28.8, y: 10, z: 9.2, w: 4, h: 3, d: 3.2, color: '#2f3557' });
-add({ shape: 'can', x: 31.2, y: 10, z: 12, w: 1.8, h: 2.4, d: 1.8, color: '#9fd8e8' });     // tip jar
+add({ shape: 'can', x: 31.2, y: 10, z: 12, w: 1.8, h: 1.9, d: 1.8, color: '#9fd8e8' });     // tip jar
 add({ shape: 'cardboard', x: 19.6, y: 10, z: 7.2, w: 2.2, h: 1.0, d: 1.6, color: '#d39a5c' }); // gum box
 
 const STEP_KINDS = [
@@ -119,7 +119,7 @@ add({ shape: 'can', x: -21.6, y: 0, z: 16, w: 1.2, h: 1.4, d: 1.2, color: '#ff8c
 add({ shape: 'cardboard', x: -2, y: 0, z: 2, w: 4, h: 4, d: 4, color: '#c68b52' });
 add({ shape: 'cardboard', x: 1.5, y: 0, z: -6, w: 3.5, h: 2.4, d: 3, color: '#b97f48' });
 add({ shape: 'cardboard', x: 3.9, y: 0, z: -6, w: 1.4, h: 1.2, d: 1.4, color: '#d39a5c', climb: true });
-add({ shape: 'cardboard', x: 10, y: 0, z: 0, w: 5, h: 3.4, d: 4.5, color: '#c68b52' });
+add({ shape: 'cardboard', x: 10, y: 0, z: 0, w: 5, h: 2.9, d: 4.5, color: '#c68b52' }); // reachable from a friend's head
 add({ shape: 'cardboard', x: -4.5, y: 0, z: 14, w: 3, h: 2.4, d: 3, color: '#b97f48' });
 add({ shape: 'cardboard', x: 16, y: 0, z: 17, w: 2.6, h: 1.4, d: 2.6, color: '#d39a5c' });
 
@@ -134,9 +134,15 @@ add({ shape: 'bottle', x: 16.2, y: 0, z: -24.5, w: 2.6, h: 10.5, d: 2.6, color: 
 add({ shape: 'bottle', x: 19.4, y: 0, z: -24.5, w: 2.6, h: 9.0, d: 2.6, color: '#7fc8ff' });
 // Back-room crates and a mop bucket
 add({ shape: 'cardboard', x: 31, y: 0, z: -21, w: 6, h: 5, d: 6, color: '#b97f48' });
-add({ shape: 'cardboard', x: 31, y: 5, z: -21, w: 4.5, h: 3.5, d: 4.5, color: '#c68b52' });
+add({ shape: 'cardboard', x: 32.3, y: 5, z: -22.3, w: 3, h: 3, d: 3, color: '#c68b52' });
 add({ shape: 'cardboard', x: 35, y: 0, z: -13, w: 4, h: 3, d: 4, color: '#d39a5c' });
 add({ shape: 'bucket', x: 24, y: 0, z: -9, w: 3.2, h: 3, d: 3.2, color: '#ffd23f' });
+
+// Rubber-band trampolines: landing on one launches you upward.
+add({ shape: 'pad', x: 26.4, y: 0, z: -21, w: 2.4, h: 0.35, d: 2.4, color: '#ff5fa2', bounce: 15 }); // onto the crates
+add({ shape: 'pad', x: 25, y: 0, z: 15.6, w: 2.4, h: 0.35, d: 2.4, color: '#ff5fa2', bounce: 21 });  // up to the counter
+// Cat bed (cushion, low enough to walk over)
+add({ shape: 'cushion', x: -3, y: 0, z: -21, w: 5, h: 0.5, d: 4, color: '#7b5ea7', collide: false });
 
 export const OBJECTS = objects;
 
@@ -145,6 +151,7 @@ export const COLLIDERS = objects
   .map((o) => ({
     min: [o.x - o.w / 2, o.y, o.z - o.d / 2],
     max: [o.x + o.w / 2, o.y + o.h, o.z + o.d / 2],
+    bounce: o.bounce || 0,
   }));
 
 // ---------- Gameplay ----------
@@ -156,13 +163,39 @@ export const SPAWNS = [
 ];
 export const SPAWN_YAW = Math.PI; // facing into the store (-z)
 
-// Valuables: pos is the base centre of the object where it rests.
+// Valuables. size = [w, h, d]; value in dollars. Positions are picked from SPOTS each heist.
 export const VALUABLES = [
-  { id: 'watch', name: 'golden watch', pos: [-22.4, 0.6, -5], ry: Math.PI / 2, size: [0.5, 1.7, 1.5] },
-  { id: 'phone', name: 'luxury phone', pos: [-29.5, 4.0, 16], ry: 0.4, size: [1.3, 0.2, 2.4] },
-  { id: 'jewels', name: 'jewelry box', pos: [22.4, 10, 9.6], ry: -0.3, size: [1.7, 1.3, 1.3] },
+  { id: 'watch', name: 'golden watch', value: 1200, size: [0.5, 1.7, 1.5] },
+  { id: 'phone', name: 'luxury phone', value: 900, size: [1.3, 0.2, 2.4] },
+  { id: 'jewels', name: 'jewelry box', value: 2500, size: [1.7, 1.3, 1.3] },
+  { id: 'gold', name: 'gold bar', value: 5000, size: [2.4, 0.9, 1.3], heavy: true },
+  { id: 'ring', name: 'diamond ring', value: 8000, size: [0.9, 0.9, 0.9], rare: true },
 ];
 export const VALUABLE_BY_ID = Object.fromEntries(VALUABLES.map((v) => [v.id, v]));
+export const MAIN_VALUABLES = VALUABLES.filter((v) => !v.rare).map((v) => v.id);
+
+// Where valuables can appear. [x, y, z, ry]. Every spot is reachable (see test.mjs).
+export const SPOTS = {
+  normal: [
+    [-22.4, 0.6, -5, Math.PI / 2],   // bottom shelf nook, left aisle
+    [-29.5, 4.0, 16, 0.4],           // display table by the window
+    [22.4, 10, 9.6, -0.3],           // checkout counter
+    [16, 1.4, 17, 0.8],              // small box near the entrance
+    [3.9, 1.2, -6, 0.2],             // little box in the middle of the shop
+    [16.2, 0, -21.4, -0.5],          // behind the giant soda bottles
+  ],
+  floor: [
+    [-29, 0, 16, 0.1],               // under the display table
+    [37, 0, -22, 1.5],               // back-right corner, past the crates
+    [-17, 0, -20.5, 0],              // corridor in front of the cooler
+    [-36, 0, -8, 1.2],               // along the left wall
+  ],
+  secret: [
+    [29.2, 5, -19.8, 0.3],           // on the crates (use the trampoline)
+    [10, 2.9, 0, 0.6],               // on the big box (jump off a friend's head)
+    [31.2, 11.9, 12, 0],             // on top of the tip jar on the counter
+  ],
+};
 
 export const ESCAPE_ZONE = { minX: 0.5, maxX: 11.5, minZ: 21.5, maxZ: 27.6 };
 export const DELIVERY_SLOTS = [
@@ -187,6 +220,24 @@ export const SECURITY_CAMERA = {
   range: 70,
 };
 
+// Mousetraps on the floor in darker spots.
+export const TRAPS = [
+  [-17, 0, -18.6], [-17, 0, 10], [20, 0, -12], [-34, 0, 6], [0, 0, -14.5],
+];
+
+// Standing on this switch turns the security camera off.
+export const CAMERA_SWITCH = { x: 36.5, z: -4, w: 2.6, d: 2.6 };
+
+export const CAT_BED = [-3, 0, -21];
+
+// Robot vacuum: drives this loop forever. Players can ride on it; it shoves thieves it bumps.
+export const VACUUM = {
+  path: [[-3, -11], [15, -11], [15, 5.5], [2, 5.5], [2, -2], [-3, -2]],
+  speed: 3,
+  half: 1.7,   // half-width of its square collision box
+  height: 0.9,
+};
+
 export const LEVEL = {
   bounds: BOUNDS,
   objects: OBJECTS,
@@ -194,6 +245,11 @@ export const LEVEL = {
   spawns: SPAWNS,
   spawnYaw: SPAWN_YAW,
   valuables: VALUABLES,
+  spots: SPOTS,
+  traps: TRAPS,
+  cameraSwitch: CAMERA_SWITCH,
+  catBed: CAT_BED,
+  vacuum: VACUUM,
   escapeZone: ESCAPE_ZONE,
   deliverySlots: DELIVERY_SLOTS,
   securityCamera: SECURITY_CAMERA,

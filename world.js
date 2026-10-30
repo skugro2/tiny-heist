@@ -203,6 +203,16 @@ function buildObject(o, solid, decor, glow) {
       main.add(UNIT_CONE, color, x, cy, z, w, h, d, 0, Math.PI); // flipped: wide at the top
       decor.add(UNIT_CYL, '#2a2140', x, y + h - 0.02, z, w * 0.82, 0.05, d * 0.82);
       break;
+    case 'pad': // rubber band stretched between four bottle caps
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) solid.add(UNIT_CYL, '#e94f64', x + sx * (w / 2 - 0.25), y + h / 2, z + sz * (d / 2 - 0.25), 0.5, h, 0.5);
+      decor.add(UNIT_BOX, color, x, y + h - 0.05, z, w - 0.3, 0.08, d - 0.3);
+      decor.add(UNIT_BOX, '#ffd23f', x, y + h - 0.02, z, w - 0.9, 0.04, 0.12);
+      decor.add(UNIT_BOX, '#ffd23f', x, y + h - 0.02, z, 0.12, 0.04, d - 0.9);
+      break;
+    case 'cushion':
+      decor.add(UNIT_BOX, color, x, cy, z, w, h, d);
+      decor.add(UNIT_BOX, shade(color, 1.25), x, y + h + 0.02, z, w * 0.8, 0.05, d * 0.75);
+      break;
     default:
       main.add(UNIT_BOX, color, x, cy, z, w, h, d);
   }
@@ -238,6 +248,8 @@ export class World {
     this._buildEscapeZone();
     this._buildLights(shadows);
     this._buildSecurityCamera();
+    this._buildSwitch();
+    this.cameraOff = false;
   }
 
   _buildShell(decor, glow) {
@@ -263,6 +275,28 @@ export class World {
     decor.add(UNIT_BOX, '#c9cde6', 2.9, 12, 27.55, 4.6, 0.5, 0.3);
     decor.add(UNIT_BOX, '#c9cde6', 9.1, 12, 27.55, 4.6, 0.5, 0.3);
     decor.add(UNIT_BOX, '#1b2142', 6, 14.5, 27.6, 0.5, 29, 0.2);
+  }
+
+  _buildSwitch() {
+    const sw = LEVEL.cameraSwitch;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(sw.w, 0.12, sw.d), new THREE.MeshLambertMaterial({ color: '#2a2140' }));
+    base.position.set(sw.x, 0.06, sw.z);
+    this.switchTop = new THREE.Mesh(new THREE.BoxGeometry(sw.w - 0.5, 0.12, sw.d - 0.5), new THREE.MeshBasicMaterial({ color: '#ff4d5e' }));
+    this.switchTop.position.set(sw.x, 0.14, sw.z);
+    const label = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.4, 1.1),
+      new THREE.MeshBasicMaterial({ map: textTexture('CAMERA OFF', { bg: '#1a2045', fg: '#ff4d5e', size: 60 }) })
+    );
+    label.position.set(39.9, 3, sw.z);
+    label.rotation.y = -Math.PI / 2;
+    this.scene.add(base, this.switchTop, label);
+  }
+
+  setCameraOff(off) {
+    this.cameraOff = off;
+    this.cone.visible = !off;
+    this.switchTop.material.color.set(off ? '#7ee081' : '#ff4d5e');
+    this.switchTop.position.y = off ? 0.09 : 0.14;
   }
 
   _buildFloor() {
@@ -404,7 +438,7 @@ export class World {
 
   update(dt, time, carrying) {
     this.zoneGlow.material.opacity = carrying ? 0.12 + 0.08 * Math.sin(time * 6) : 0.07;
-    this.camLed.visible = this.alarm ? Math.sin(time * 18) > 0 : Math.sin(time * 3) > -0.3;
+    this.camLed.visible = this.cameraOff ? false : this.alarm ? Math.sin(time * 18) > 0 : Math.sin(time * 3) > -0.3;
     if (this.alarm) {
       this.alarmT += dt;
       const pulse = 0.5 + 0.5 * Math.sin(this.alarmT * 9);

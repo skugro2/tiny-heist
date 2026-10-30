@@ -2,21 +2,21 @@
 // The world is a list of axis-aligned boxes; the player is a box of PLAYER_RADIUS x PLAYER_HEIGHT.
 
 import { PLAYER_RADIUS as R, PLAYER_HEIGHT as H, STEP_HEIGHT, INTERACT_RANGE } from './constants.js';
-import { COLLIDERS, ESCAPE_ZONE, SECURITY_CAMERA, VALUABLE_BY_ID } from './level.js';
+import { COLLIDERS, ESCAPE_ZONE, SECURITY_CAMERA, VALUABLE_BY_ID, VACUUM } from './level.js';
 
 const EPS = 1e-4;
 const SKIN = 1e-3;
 
-export function overlapsBox(x, y, z, c) {
+export function overlapsBox(x, y, z, c, r = R, h = H) {
   return (
-    x + R > c.min[0] + EPS && x - R < c.max[0] - EPS &&
-    z + R > c.min[2] + EPS && z - R < c.max[2] - EPS &&
-    y + H > c.min[1] + EPS && y < c.max[1] - EPS
+    x + r > c.min[0] + EPS && x - r < c.max[0] - EPS &&
+    z + r > c.min[2] + EPS && z - r < c.max[2] - EPS &&
+    y + h > c.min[1] + EPS && y < c.max[1] - EPS
   );
 }
 
-export function blockedAt(x, y, z, colliders = COLLIDERS) {
-  for (const c of colliders) if (overlapsBox(x, y, z, c)) return true;
+export function blockedAt(x, y, z, colliders = COLLIDERS, r = R, h = H) {
+  for (const c of colliders) if (overlapsBox(x, y, z, c, r, h)) return true;
   return false;
 }
 
@@ -40,6 +40,7 @@ export function moveAndCollide(s, dt, colliders = COLLIDERS) {
   const steps = Math.max(1, Math.ceil(maxMove / 0.2));
   const h = dt / steps;
   let grounded = false;
+  s.landedOn = null;
 
   for (let i = 0; i < steps; i++) {
     for (const axis of [0, 2]) {
@@ -64,7 +65,7 @@ export function moveAndCollide(s, dt, colliders = COLLIDERS) {
     for (const c of colliders) {
       if (!overlapsBox(p[0], p[1], p[2], c)) continue;
       if (dy <= 0) {
-        if (c.max[1] - p[1] <= -dy + 0.05) { p[1] = c.max[1]; v[1] = 0; grounded = true; }
+        if (c.max[1] - p[1] <= -dy + 0.05) { p[1] = c.max[1]; v[1] = 0; grounded = true; s.landedOn = c; }
       } else if (p[1] + H - c.min[1] <= dy + 0.05) {
         p[1] = c.min[1] - H - SKIN; v[1] = 0;
       }
@@ -156,17 +157,22 @@ export function inEscapeZone(p, zone = ESCAPE_ZONE) {
   return p[0] >= zone.minX && p[0] <= zone.maxX && p[2] >= zone.minZ && p[2] <= zone.maxZ && p[1] < 2.5;
 }
 
-/** Nearest valuable the player at p can pick up, or null. Same rule on client (prompt) and server (truth). */
-export function findPickupTarget(items, p) {
+/** How many thieves can hold this valuable at once. */
+export function capacity(id) {
+  return VALUABLE_BY_ID[id].heavy ? 2 : 1;
+}
+
+/** Nearest valuable the player can pick up, or null. Same rule on client (prompt) and server (truth). */
+export function findPickupTarget(items, p, myId) {
   let best = null;
   let bestDist = Infinity;
   for (const it of items) {
-    if (it.holder || it.delivered) continue;
+    if (it.delivered || it.holders.includes(myId) || it.holders.length >= capacity(it.id)) continue;
     const def = VALUABLE_BY_ID[it.id];
     const dy = it.pos[1] - p[1];
     if (dy < -1.2 || dy > 1.5) continue;
     const d = Math.hypot(it.pos[0] - p[0], it.pos[2] - p[2]);
-    const reach = INTERACT_RANGE + Math.max(def.size[0], def.size[2]) * 0.35;
+    const reach = INTERACT_RANGE + Math.max(def.size[0], def.size[2]) * 0.4;
     if (d < reach && d < bestDist) { best = it; bestDist = d; }
   }
   return best;
@@ -179,4 +185,36 @@ export function dropPosition(p, ry, colliders = COLLIDERS) {
   if (pointInSolid(x, p[1] + 0.3, z, colliders)) { x = p[0]; z = p[2]; }
   const y = groundHeightAt(x, z, p[1] + 0.3, colliders);
   return [x, y, z];
+}
+
+// ---------- Robot vacuum (deterministic: everyone computes the same position from the clock) ----------
+
+const VAC_SEGMENTS = (() => {
+  const segs = [];
+  let total = 0;
+  const pts = VACUUM.path;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    segs.push({ a, b, len, start: total });
+    total += len;
+  }
+  return { segs, total };
+})();
+
+/** Position and heading of the robot vacuum at a given time (seconds). */
+export function vacuumAt(seconds) {
+  const { segs, total } = VAC_SEGMENTS;
+  const dist = (((seconds * VACUUM.speed) % total) + total) % total;
+  const seg = segs.find((s) => dist >= s.start && dist < s.start + s.len) || segs[0];
+  const k = (dist - seg.start) / seg.len;
+  return {
+    x: seg.a[0] + (seg.b[0] - seg.a[0]) * k,
+    z: seg.a[1] + (seg.b[1] - seg.a[1]) * k,
+    ry: Math.atan2(seg.b[0] - seg.a[0], seg.b[1] - seg.a[1]),
+  };
+}
+
+export function vacuumCollider(v) {
+  return { min: [v.x - VACUUM.half, 0, v.z - VACUUM.half], max: [v.x + VACUUM.half, VACUUM.height, v.z + VACUUM.half], vacuum: true };
 }

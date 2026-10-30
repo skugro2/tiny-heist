@@ -1,7 +1,8 @@
 // Local player movement (client-side, using the shared physics) and the third-person camera.
 
 import * as C from './constants.js';
-import { moveAndCollide, raycast } from './physics.js';
+import { moveAndCollide, overlapsBox, blockedAt, raycast } from './physics.js';
+import { COLLIDERS } from './level.js';
 
 const JUMP_BUFFER = 0.12;   // seconds a jump press is remembered before landing
 const COYOTE_TIME = 0.1;    // seconds you can still jump after running off a ledge
@@ -25,9 +26,39 @@ export class LocalPlayer {
     this.ry = yaw;
   }
 
-  /** Returns true on the frame a jump starts. */
-  update(dt, input, camYaw, carrying) {
+  /**
+   * opts: { speedFactor, frozen, colliders, vacuum: { box, dx, dz } }
+   * Returns { jumped, bounced, shoved } for sounds/animation.
+   */
+  update(dt, input, camYaw, opts = {}) {
     const b = this.body;
+    const colliders = opts.colliders || COLLIDERS;
+    const out = { jumped: false, bounced: false, shoved: false };
+
+    // Riding the robot vacuum: move along with it.
+    const vac = opts.vacuum;
+    if (vac && b.grounded && Math.abs(b.p[1] - vac.box.max[1]) < 0.05 &&
+        b.p[0] > vac.prevBox.min[0] - C.PLAYER_RADIUS && b.p[0] < vac.prevBox.max[0] + C.PLAYER_RADIUS &&
+        b.p[2] > vac.prevBox.min[2] - C.PLAYER_RADIUS && b.p[2] < vac.prevBox.max[2] + C.PLAYER_RADIUS) {
+      if (!blockedAt(b.p[0] + vac.dx, b.p[1], b.p[2] + vac.dz, COLLIDERS)) { b.p[0] += vac.dx; b.p[2] += vac.dz; }
+    }
+    // The vacuum drove into us: shove the thief out of the way.
+    if (vac && overlapsBox(b.p[0], b.p[1], b.p[2], vac.box)) {
+      const cx = (vac.box.min[0] + vac.box.max[0]) / 2, cz = (vac.box.min[2] + vac.box.max[2]) / 2;
+      let ax = b.p[0] - cx, az = b.p[2] - cz;
+      const len = Math.hypot(ax, az) || 1;
+      ax /= len; az /= len;
+      for (let i = 0; i < 30 && overlapsBox(b.p[0], b.p[1], b.p[2], vac.box); i++) { b.p[0] += ax * 0.1; b.p[2] += az * 0.1; }
+      b.v[0] = ax * 8; b.v[2] = az * 8; b.v[1] = Math.max(b.v[1], 4);
+      out.shoved = true;
+    }
+    if (opts.frozen) {
+      b.v[0] = 0; b.v[2] = 0;
+      b.v[1] -= C.GRAVITY * dt;
+      moveAndCollide(b, dt, colliders);
+      this.moving = 0;
+      return out;
+    }
     const fwd = (input.down('KeyW') || input.down('ArrowUp') ? 1 : 0) - (input.down('KeyS') || input.down('ArrowDown') ? 1 : 0);
     const side = (input.down('KeyD') || input.down('ArrowRight') ? 1 : 0) - (input.down('KeyA') || input.down('ArrowLeft') ? 1 : 0);
     const sprint = input.down('ShiftLeft') || input.down('ShiftRight');
@@ -39,7 +70,7 @@ export class LocalPlayer {
     if (len > 0) { mx /= len; mz /= len; }
 
     let speed = sprint ? C.SPRINT_SPEED : C.WALK_SPEED;
-    if (carrying) speed *= C.CARRY_SPEED_FACTOR;
+    speed *= opts.speedFactor ?? 1;
     const accel = b.grounded ? 60 : 22;
     const tx = mx * speed, tz = mz * speed;
     const k = Math.min(1, accel * dt / Math.max(speed, 1));
@@ -50,17 +81,22 @@ export class LocalPlayer {
     else this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     this.airTime = b.grounded ? 0 : this.airTime + dt;
 
-    let jumped = false;
     if (this.jumpBuffer > 0 && this.airTime <= COYOTE_TIME && b.v[1] <= 0.01) {
       b.v[1] = C.JUMP_VELOCITY;
       this.jumpBuffer = 0;
       this.airTime = COYOTE_TIME + 1;
-      jumped = true;
+      out.jumped = true;
     }
 
     b.v[1] -= C.GRAVITY * dt;
     if (b.v[1] < -40) b.v[1] = -40;
-    moveAndCollide(b, dt);
+    moveAndCollide(b, dt, colliders);
+    if (b.landedOn && b.landedOn.bounce) { // rubber-band trampoline
+      b.v[1] = b.landedOn.bounce;
+      b.grounded = false;
+      this.airTime = COYOTE_TIME + 1;
+      out.bounced = true;
+    }
 
     if (b.p[1] < -5) this.teleport(this.spawn); // safety net, should never happen
 
@@ -73,7 +109,7 @@ export class LocalPlayer {
       this.ry += d * Math.min(1, dt * 14);
     }
     this.moving = len > 0 && hs > 0.5 ? (sprint ? 2 : 1) : 0;
-    return jumped;
+    return out;
   }
 }
 

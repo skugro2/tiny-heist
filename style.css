@@ -114,6 +114,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--night)
 }
 .hud-loot-count.bump { animation: bump 450ms ease; }
 @keyframes bump { 40% { transform: scale(1.15); } }
+.hud-money { margin-top: 6px; font-family: var(--display); font-size: 18px; color: var(--freezer); text-shadow: 0 1px 3px #000; }
+.hud-police {
+  margin-top: 8px; font-family: var(--display); font-size: 22px; color: #fff;
+  background: var(--alarm); padding: 4px 14px; border-radius: 10px; display: inline-block;
+}
+.hud-police.urgent { animation: flash 0.5s steps(2, jump-none) infinite; }
+.hud-status { margin-top: 8px; font-weight: 700; color: var(--tag); text-shadow: 0 1px 3px #000; max-width: 460px; }
 .hud-carry { margin-top: 8px; font-weight: 700; color: var(--freezer); text-shadow: 0 1px 3px #000; }
 .hud-spotted { margin-top: 10px; font-weight: 700; color: var(--alarm); text-shadow: 0 1px 3px #000; }
 .meter { width: 220px; height: 8px; margin: 6px auto 0; background: rgba(0, 0, 0, 0.45); border-radius: 4px; overflow: hidden; }
@@ -147,7 +154,7 @@ kbd {
 @keyframes toast { 0% { opacity: 0; transform: translateY(-6px); } 8%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 
 .alarm-banner {
-  position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 32%; left: 50%; transform: translateX(-50%);
   font-family: var(--display); font-size: clamp(26px, 4.6vw, 54px); color: #fff; white-space: nowrap;
   background: var(--alarm); padding: 10px 26px; border-radius: 14px;
   box-shadow: 0 0 60px rgba(255, 77, 94, 0.7);
@@ -166,10 +173,13 @@ kbd {
 .overlay-title { margin: 0 0 8px; font: clamp(36px, 7vw, 72px) var(--display); color: var(--tag); font-weight: 400; }
 .overlay-title-small { font-size: 34px; }
 .overlay-stats { margin: 0 0 22px; color: var(--muted); font-size: 17px; }
+.overlay-record { margin: -10px 0 20px; color: var(--freezer); font-weight: 700; }
+.overlay-title.failed { color: var(--alarm); }
 .overlay-note { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
 .overlay .btn-primary { background: var(--tag); color: var(--tag-ink); border-color: var(--tag); box-shadow: 0 4px 0 #b48a12; }
 
 @media (prefers-reduced-motion: reduce) {
+  .hud-police.urgent,
   .alarm-banner, .toast, .hud-loot-count.bump { animation: none; }
   .tag { transform: none; }
 }

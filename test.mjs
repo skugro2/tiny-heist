@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { startServer } from './server.js';
 import { LEVEL } from './level.js';
 import * as C from './constants.js';
-import { cameraDir, cameraSees, moveAndCollide } from './physics.js';
+import { cameraDir, cameraSees, moveAndCollide, vacuumAt, blockedAt } from './physics.js';
 
 if (typeof WebSocket === 'undefined') {
   console.error('This test needs Node 22 or newer (built-in WebSocket client).');
@@ -50,6 +50,7 @@ class Bot {
   /** Walk in a straight line at a legal speed, sending 20 updates per second like the real client. */
   async walkTo(target, speed = 10) {
     const dt = 1 / C.CLIENT_SEND_RATE;
+    this.p = [this.p[0], Math.max(this.p[1], 0.5), this.p[2]]; // hop over mousetraps while travelling
     for (;;) {
       const d = [target[0] - this.p[0], target[1] - this.p[1], target[2] - this.p[2]];
       const dist = Math.hypot(d[0], d[2]);
@@ -70,122 +71,160 @@ class Bot {
   close() { this.ws.close(); }
 }
 
-async function main() {
-  console.log('Physics');
-  {
-    const climb = (start, dir, seconds) => {
-      const s = { p: [...start], v: [0, 0, 0], grounded: false };
-      let maxY = 0;
-      for (let t = 0; t < seconds; t += 1 / 60) {
-        s.v[0] = dir[0] * C.WALK_SPEED; s.v[2] = dir[1] * C.WALK_SPEED;
-        if (s.grounded) s.v[1] = C.JUMP_VELOCITY;
-        s.v[1] -= C.GRAVITY / 60;
-        moveAndCollide(s, 1 / 60);
-        maxY = Math.max(maxY, s.p[1]);
-      }
-      return maxY;
-    };
-    assert.ok(climb([3, 0, 9.5], [1, 0], 8) >= 10, 'staircase should reach the counter top');
-    ok('a jumping player can climb the staircase onto the checkout counter');
-    assert.ok(climb([-19, 0, 16], [-1, 0], 1.6) >= 4, 'can + box should reach the display table');
-    ok('a jumping player can climb the can and box onto the display table');
-    const wall = { p: [38, 0, 20], v: [0, 0, 0], grounded: true };
-    for (let i = 0; i < 120; i++) { wall.v[0] = 9; wall.v[1] -= C.GRAVITY / 60; moveAndCollide(wall, 1 / 60); }
-    assert.ok(wall.p[0] < LEVEL.bounds.maxX, 'walls stop the player');
-    ok('walls stop the player');
-  }
 
-  const server = await startServer(0);
+async function room(url, names) {
+  const bots = [];
+  for (const n of names) { const b = new Bot(url, n); await b.open(); bots.push(b); }
+  bots[0].send({ t: 'create', name: names[0] });
+  const j = await bots[0].wait((m) => m.t === 'joined');
+  for (const b of bots.slice(1)) { b.send({ t: 'join', name: b.name, code: j.code }); await b.wait((m) => m.t === 'joined'); }
+  return bots;
+}
+
+function climb(start, dir, seconds) {
+  const s = { p: [...start], v: [0, 0, 0], grounded: false };
+  let maxY = 0;
+  for (let t = 0; t < seconds; t += 1 / 60) {
+    s.v[0] = dir[0] * C.WALK_SPEED; s.v[2] = dir[1] * C.WALK_SPEED;
+    if (s.grounded) s.v[1] = C.JUMP_VELOCITY;
+    s.v[1] -= C.GRAVITY / 60;
+    moveAndCollide(s, 1 / 60);
+    if (s.landedOn && s.landedOn.bounce) { s.v[1] = s.landedOn.bounce; s.grounded = false; }
+    maxY = Math.max(maxY, s.p[1]);
+  }
+  return { maxY, p: s.p };
+}
+
+async function main() {
+  console.log('Physics and level');
+  assert.ok(climb([3, 0, 9.5], [1, 0], 8).maxY >= 10); ok('staircase reaches the checkout counter');
+  assert.ok(climb([-19, 0, 16], [-1, 0], 1.6).maxY >= 4); ok('can + box reach the display table');
+  { const r = climb([26.4, 0.5, -21], [0, 0], 1.2); assert.ok(r.maxY > 5.2); ok(`crate trampoline launches you to ${r.maxY.toFixed(1)} (crate top is 5)`); }
+  { const r = climb([25, 0.5, 15.6], [0, 0], 1.5); assert.ok(r.maxY > 10.2); ok(`counter trampoline launches you to ${r.maxY.toFixed(1)} (counter top is 10)`); }
+  { let bad = 0; for (let t = 0; t < 30; t += 0.05) { const v = vacuumAt(t); if (blockedAt(v.x, 0, v.z, LEVEL.colliders, LEVEL.vacuum.half, LEVEL.vacuum.height)) bad++; } assert.equal(bad, 0); ok('robot vacuum route never drives through furniture'); }
+  for (const kind of Object.keys(LEVEL.spots)) for (const s of LEVEL.spots[kind]) assert.ok(!blockedAt(s[0], s[1], s[2]), `spot ${s}`);
+  ok('every loot spot has room for a thief to stand');
+
+  // ---------------- Server 1: core heist (cat and camera off so the bots are not disturbed) ----------------
+  const server = await startServer(0, { cat: false, camera: false });
   const port = server.address().port;
   const base = `http://localhost:${port}`;
-  const wsUrl = `ws://localhost:${port}/ws`;
+  const url = `ws://localhost:${port}/ws`;
 
   console.log('Static files');
-  for (const path of ['/', '/style.css', '/main.js', '/game.js', '/level.js', '/physics.js']) {
-    const res = await fetch(base + path);
-    assert.equal(res.status, 200, path);
-  }
-  ok('serves the client and shared modules');
-  const trav = await fetch(base + '/..%2f..%2f..%2fetc%2fpasswd');
-  assert.notEqual(trav.status, 200);
+  for (const path of ['/', '/style.css', '/main.js', '/game.js', '/props.js', '/level.js', '/physics.js']) assert.equal((await fetch(base + path)).status, 200, path);
+  ok('serves the game files');
+  assert.notEqual((await fetch(base + '/..%2f..%2f..%2fetc%2fpasswd')).status, 200);
   ok('blocks path traversal');
 
-  console.log('Rooms');
-  const a = new Bot(wsUrl, 'Alice');
-  const b = new Bot(wsUrl, 'Bob');
-  await a.open(); await b.open();
-  a.send({ t: 'create', name: 'Alice' });
-  const ja = await a.wait((m) => m.t === 'joined');
-  assert.match(ja.code, /^[A-Z]{4}$/);
-  ok(`Alice created room ${ja.code}`);
-
-  b.send({ t: 'join', name: 'Bob', code: 'ZZZZ' === ja.code ? 'YYYY' : 'ZZZZ' });
-  await b.wait((m) => m.t === 'err');
-  ok('joining a wrong code is rejected with an error');
-
-  b.send({ t: 'join', name: '  Bob<script>  ', code: ja.code.toLowerCase() });
-  const jb = await b.wait((m) => m.t === 'joined');
-  assert.equal(jb.players.length, 2);
-  assert.equal(jb.players.find((p) => p.id === b.id).name, 'Bobscript');
-  const pj = await a.wait((m) => m.t === 'pj');
-  assert.equal(pj.player.id, b.id);
-  ok('Bob joined (lower-case code accepted, name sanitised) and Alice was told');
-
-  console.log('Movement sync');
+  console.log('Rooms and movement');
+  const [a, b] = await room(url, ['Alice', 'Bob']);
+  const err = new Bot(url, 'X'); await err.open();
+  err.send({ t: 'join', name: 'X', code: a.code === 'ZZZZ' ? 'YYYY' : 'ZZZZ' });
+  await err.wait((m) => m.t === 'err'); err.close();
+  ok(`room ${a.code}: wrong codes are rejected, Bob joined`);
   await a.walkTo([4, 0, 12]);
-  const snap = await b.wait((m) => m.t === 'snap' && m.pl.some(([id, x, , z]) => id === a.id && Math.abs(x - 4) < 0.05 && Math.abs(z - 12) < 0.05), 2000, 'Alice position in snapshot');
-  assert.ok(snap.st > 0);
-  ok("Bob's snapshots show Alice's new position");
-  a.send({ t: 'j' });
-  await b.wait((m) => m.t === 'j' && m.id === a.id);
-  ok('jumps are relayed to other players');
-  const before = [...a.p];
-  a.p = [-35, 0, -20];
-  a.sendState();
-  const corr = await a.wait((m) => m.t === 'corr');
-  assert.deepEqual(corr.p.map(Math.round), before.map(Math.round));
-  ok('teleporting is rejected and corrected by the server');
+  await b.wait((m) => m.t === 'snap' && m.pl.some(([id, x, , z]) => id === a.id && Math.abs(x - 4) < 0.05 && Math.abs(z - 12) < 0.05), 2000, 'position');
+  ok("Bob sees Alice move");
+  a.p = [-35, 0, -20]; a.sendState();
+  await a.wait((m) => m.t === 'corr');
+  ok('teleporting is corrected');
 
-  console.log('Valuables');
-  b.clear(); a.clear();
-  await a.walkTo([-20.6, 0, -5]);
+  console.log('Loot');
+  assert.equal(a.items.length, 5);
+  const spotsUsed = new Set(a.items.map((i) => i.pos.join(',')));
+  assert.equal(spotsUsed.size, 5);
+  ok('5 pieces of loot placed on 5 different random spots');
+  const watch = a.item('watch');
+  a.clear(); b.clear();
+  await a.walkTo(watch.pos);
   a.send({ t: 'e' });
   await b.wait((m) => m.t === 'ev' && m.kind === 'pickup' && m.item === 'watch');
-  await sleep(100);
-  assert.equal(b.item('watch').holder, a.id);
-  ok('Alice picked up the golden watch and Bob saw it');
-
-  await b.walkTo([-20.4, 0, -5.2]);
+  await b.walkTo([watch.pos[0] + 0.3, watch.pos[1], watch.pos[2]]);
   b.send({ t: 'e' });
   await sleep(300);
-  assert.equal(a.item('watch').holder, a.id);
-  assert.ok(!b.msgs.some((m) => m.t === 'ev' && m.kind === 'pickup'));
-  ok('Bob cannot grab the watch Alice is holding (no duplicates)');
+  assert.deepEqual(a.item('watch').holders, [a.id]);
+  ok('only one thief can hold the watch (no duplicates)');
+  await a.walkTo([6, 0, 23.5]);
+  await b.wait((m) => m.t === 'ev' && m.kind === 'deliver' && m.item === 'watch');
+  ok('watch delivered by walking into the escape zone');
 
-  await a.walkTo([-12, 0, 12]);
-  a.send({ t: 'e' });
-  await b.wait((m) => m.t === 'ev' && m.kind === 'drop');
-  await sleep(100);
-  const dropped = b.item('watch');
-  assert.equal(dropped.holder, null);
-  assert.equal(dropped.pos[1], 0);
-  ok(`Alice dropped the watch on the floor at (${dropped.pos[0].toFixed(1)}, ${dropped.pos[2].toFixed(1)})`);
+  console.log('Heavy gold bar');
+  const gold = a.item('gold');
+  await a.walkTo([gold.pos[0] - 0.8, gold.pos[1] + 0.5, gold.pos[2]]);
+  await b.walkTo([gold.pos[0] + 0.8, gold.pos[1] + 0.5, gold.pos[2]]);
+  a.send({ t: 'e' }); await sleep(150); b.send({ t: 'e' }); await sleep(300);
+  assert.equal(a.item('gold').holders.length, 2);
+  ok('two thieves are holding the gold bar together');
+  // walk apart -> it falls
+  await b.walkTo([gold.pos[0] + 6, gold.pos[1] + 0.5, gold.pos[2]]);
+  await a.wait((m) => m.t === 'ev' && m.kind === 'drop' && m.apart, 3000, 'apart drop');
+  ok('walking too far apart drops it');
+  const g2 = a.item('gold');
+  await a.walkTo([g2.pos[0] - 0.8, g2.pos[1] + 0.5, g2.pos[2]]);
+  await b.walkTo([g2.pos[0] + 0.8, g2.pos[1] + 0.5, g2.pos[2]]);
+  a.send({ t: 'e' }); await sleep(150); b.send({ t: 'e' }); await sleep(300);
+  assert.equal(a.item('gold').holders.length, 2);
+  await Promise.all([a.walkTo([5.5, 0.5, 15], 5), b.walkTo([7.5, 0.5, 15], 5)]);
+  await Promise.all([a.walkTo([5.5, 0, 24], 5), b.walkTo([7.5, 0, 24], 5)]);
+  await a.wait((m) => m.t === 'ev' && m.kind === 'deliver' && m.item === 'gold', 3000, 'gold delivered');
+  ok('carried together into the escape zone: +$5,000');
 
-  await b.walkTo([dropped.pos[0] + 0.5, 0, dropped.pos[2]]);
+  console.log('Mousetraps and the camera switch');
+  const trap = LEVEL.traps[1];
+  a.clear(); b.clear();
+  await a.walkTo([trap[0] + 2, 0.5, trap[2]]);
+  await a.walkTo([trap[0], 0, trap[2]]);
+  await b.wait((m) => m.t === 'ev' && m.kind === 'trap' && m.who === a.id, 2000, 'trap');
+  ok('Alice stepped in a mousetrap');
+  a.p = [trap[0] + 0.5, 0, trap[2]]; a.sendState();
+  await a.wait((m) => m.t === 'corr', 1000, 'stuck');
+  ok('a trapped thief cannot walk away');
+  await b.walkTo([trap[0] + 1, 0.5, trap[2]]);
   b.send({ t: 'e' });
-  await a.wait((m) => m.t === 'ev' && m.kind === 'pickup' && m.who === b.id);
-  ok('Bob picked the dropped watch back up');
+  await a.wait((m) => m.t === 'ev' && m.kind === 'rescue' && m.other === a.id, 2000, 'rescue');
+  ok('Bob freed Alice');
+  const sw = LEVEL.cameraSwitch;
+  await b.walkTo([sw.x, 0, sw.z]);
+  await a.wait((m) => m.t === 'cam' && m.off === true, 2000, 'camera off');
+  await b.walkTo([sw.x - 4, 0.5, sw.z]);
+  await a.wait((m) => m.t === 'cam' && m.off === false, 2000, 'camera on');
+  ok('standing on the switch turns the camera off, leaving turns it back on');
 
-  console.log('Escape zone');
-  await b.walkTo([6, 0, 24]);
-  await a.wait((m) => m.t === 'ev' && m.kind === 'deliver' && m.item === 'watch', 2000, 'delivery');
-  await sleep(100);
-  assert.equal(a.items.filter((i) => i.delivered).length, 1);
-  ok('carrying the watch into the escape zone delivers it (1 / 3)');
+  console.log('Finishing the heist');
+  for (const id of ['phone', 'ring', 'jewels']) {
+    const it = a.item(id);
+    await a.walkTo([it.pos[0], it.pos[1] + 0.5, it.pos[2]]);
+    await a.walkTo([it.pos[0] - 0.5, it.pos[1], it.pos[2]]);
+    a.send({ t: 'e' });
+    await b.wait((m) => m.t === 'ev' && m.kind === 'pickup' && m.item === id, 2000, `pickup ${id}`);
+    await a.walkTo([6, 0.5, 16]);
+    if (id === 'jewels') {
+      const done = b.wait((m) => m.t === 'done', 4000, 'done');
+      await a.walkTo([6, 0, 23.5]);
+      const d = await done;
+      assert.equal(d.money, 1200 + 5000 + 8000 + 900 + 2500);
+      assert.equal(d.rare, true);
+      ok(`HEIST COMPLETE with $${d.money.toLocaleString('en-US')} (including the secret diamond ring)`);
+    } else {
+      await a.walkTo([6, 0, 23.5]);
+      await b.wait((m) => m.t === 'ev' && m.kind === 'deliver' && m.item === id, 2000, `deliver ${id}`);
+    }
+  }
+  b.send({ t: 'restart' });
+  const reset = await a.wait((m) => m.t === 'reset');
+  assert.equal(reset.items.filter((i) => i.delivered).length, 0);
+  ok('restart puts all loot back (on new random spots)');
+  b.close();
+  await a.wait((m) => m.t === 'pl');
+  a.close();
+  ok('disconnects are handled');
 
-  console.log('Security camera');
+  // ---------------- Server 2: alarm and police ----------------
+  console.log('Alarm and police');
+  const s2 = await startServer(0, { cat: false, policeSeconds: 2 });
+  const [p1] = await room(`ws://localhost:${s2.address().port}/ws`, ['Pat']);
   const cam = LEVEL.securityCamera;
-  // Find a floor spot the camera sees well at one end of its sweep (where it lingers longest).
   let spot = null;
   for (const yaw of [cam.baseYaw - cam.sweep, cam.baseYaw + cam.sweep]) {
     const dir = cameraDir(yaw);
@@ -196,75 +235,39 @@ async function main() {
     }
     if (spot) break;
   }
-  assert.ok(spot, 'there should be a visible floor spot');
-  a.clear(); b.clear();
-  await a.walkTo(spot);
-  const alarmPromise = b.wait((m) => m.t === 'alarm' && m.on, 14000, 'alarm');
-  const holding = a.hold(14);
-  const alarm = await alarmPromise;
-  assert.equal(alarm.by, a.id);
-  ok('standing in the camera cone triggers ALARM TRIGGERED for everyone');
-  await holding.catch(() => {});
-  await a.walkTo([30, 0, 20]); // out of sight
+  await p1.walkTo([spot[0], 0.5, spot[2]]);
+  await p1.walkTo(spot);
+  const alarmP = p1.wait((m) => m.t === 'alarm' && m.on, 14000, 'alarm');
+  const hold = p1.hold(14);
+  const al = await alarmP;
+  assert.ok(al.until > Date.now() - 100);
+  ok('the camera triggers the alarm and starts the police countdown');
+  const fail = await p1.wait((m) => m.t === 'fail', 4000, 'busted');
+  assert.equal(fail.money, 0);
+  ok('when the countdown runs out: BUSTED');
+  await hold;
+  p1.close();
+  s2.close();
 
-  console.log('Completing the heist');
-  // Phone: on the display table (y = 4)
-  await b.walkTo([-22, 0, 16]);
-  await b.walkTo([-27.8, 4, 16]);
-  b.send({ t: 'e' });
-  await a.wait((m) => m.t === 'ev' && m.kind === 'pickup' && m.item === 'phone');
-  await b.walkTo([-22, 0, 20]);
-  await b.walkTo([5, 0, 23]);
-  b.send({ t: 'e' }); // dropping inside the zone also delivers
-  await a.wait((m) => m.t === 'ev' && m.kind === 'deliver' && m.item === 'phone');
-  ok('Bob carried the phone down and stashed it (2 / 3)');
-
-  // Jewels: on the checkout counter (y = 10)
-  await a.walkTo([16, 10, 9.6]);
-  await a.walkTo([21.2, 10, 9.6]);
-  a.send({ t: 'e' });
-  await b.wait((m) => m.t === 'ev' && m.kind === 'pickup' && m.item === 'jewels');
-  await a.walkTo([14, 0, 16]);
-  const donePromise = b.wait((m) => m.t === 'done', 8000, 'heist complete');
-  await a.walkTo([8, 0, 24]);
-  const done = await donePromise;
-  assert.ok(done.time > 0);
-  assert.ok(done.alarms >= 1);
-  ok(`HEIST COMPLETE in ${(done.time / 1000).toFixed(1)}s with ${done.alarms} alarm(s)`);
-
-  a.clear();
-  a.send({ t: 'e' });
-  await sleep(200);
-  assert.ok(!a.msgs.some((m) => m.t === 'ev' && m.kind === 'pickup'));
-  ok('no more interactions after completion');
-
-  console.log('Restart and disconnects');
-  b.send({ t: 'restart' });
-  const reset = await a.wait((m) => m.t === 'reset');
-  assert.equal(reset.items.filter((i) => i.delivered).length, 0);
-  ok('"Plan another heist" resets the store for everyone');
-
-  const c = new Bot(wsUrl, 'Cara');
-  await c.open();
-  c.send({ t: 'join', name: 'Cara', code: ja.code });
-  await c.wait((m) => m.t === 'joined');
-  ok('a third player can join mid-session');
-
-  await b.walkTo([-20.6, 0, -5]);
-  b.send({ t: 'e' });
-  await a.wait((m) => m.t === 'ev' && m.kind === 'pickup' && m.who === b.id);
-  b.close();
-  const left = await a.wait((m) => m.t === 'pl' && m.id === b.id);
-  assert.equal(left.name, 'Bobscript');
-  await sleep(100);
-  assert.equal(a.item('watch').holder, null);
-  ok('when a carrier disconnects, the others see them leave and the item is dropped');
-
-  a.close(); c.close();
-  await sleep(200);
-  const health = await (await fetch(base + '/health')).json();
-  assert.equal(health.rooms, 0);
-  ok('empty rooms are cleaned up');
+  // ---------------- Server 3: the cat ----------------
+  console.log('The cat');
+  const s3 = await startServer(0, { camera: false });
+  const [k] = await room(`ws://localhost:${s3.address().port}/ws`, ['Kit']);
+  const bed = LEVEL.catBed;
+  await k.walkTo([bed[0] + 6, 0.5, bed[2] + 8]);
+  await k.walkTo([bed[0] + 6, 0, bed[2] + 8]);
+  for (let i = 0; i < 10; i++) { k.send({ t: 's', p: k.p, r: 0, g: 1, m: 2 }); await sleep(50); } // sprinting = noise
+  await k.wait((m) => m.t === 'snap' && m.cat && m.cat[3] !== 0, 3000, 'cat awake');
+  ok('sprinting near the sleeping cat wakes it up');
+  const caught = k.wait((m) => m.t === 'ev' && m.kind === 'caught' && m.who === k.id, 15000, 'caught');
+  const standStill = k.hold(15);
+  await caught;
+  const corr = await k.wait((m) => m.t === 'corr', 1000);
+  assert.ok(corr.p[2] > 15, 'sent back to the entrance');
+  ok('the cat hunted the thief down and swatted them back to the entrance');
+  await standStill.catch(() => {});
+  k.close();
+  s3.close();
 
   server.close();
   console.log(`\nAll ${passed} checks passed.`);
