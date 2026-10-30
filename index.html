@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tiny Heist</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%92%8E%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game" tabindex="0" aria-label="Tiny Heist game view"></canvas>
+
+  <!-- Start screen -->
+  <main id="start" class="start">
+    <h1 class="logo" aria-label="Tiny Heist">
+      <span class="logo-tiny">TINY</span>
+      <span class="logo-heist">HEIST</span>
+    </h1>
+    <p class="pitch">The corner shop is closed. You and your crew are the size of toys. Grab three valuables and get out before the camera catches you.</p>
+
+    <section class="tag" aria-label="Join a heist">
+      <span class="tag-hole" aria-hidden="true"></span>
+      <label class="field">
+        <span>Your nickname</span>
+        <input id="nameInput" type="text" maxlength="14" autocomplete="nickname" placeholder="e.g. Pickles" />
+      </label>
+      <button id="createBtn" class="btn btn-primary" type="button">Create room</button>
+
+      <p class="tag-divider">Got a code from your crew?</p>
+      <div class="join-row">
+        <label class="field field-code">
+          <span>Room code</span>
+          <input id="codeInput" type="text" maxlength="4" autocomplete="off" spellcheck="false" placeholder="XXXX" />
+        </label>
+        <button id="joinBtn" class="btn btn-secondary" type="button">Join room</button>
+      </div>
+      <p id="startError" class="start-error" role="alert"></p>
+    </section>
+    <p class="start-foot">2 to 4 players. Runs in Chrome and Edge, including Chromebooks.</p>
+  </main>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hud" hidden>
+    <div class="hud-room">
+      <div class="hud-room-line">Room: <strong id="hudRoom">----</strong>
+        <button id="copyInvite" class="hud-link" type="button">Copy invite link</button>
+      </div>
+      <div>Players: <strong id="hudCount">1</strong></div>
+      <ul id="hudPlayers" class="hud-players"></ul>
+    </div>
+
+    <div class="hud-loot">
+      <div id="hudLoot" class="hud-loot-count">VALUABLES: 0 / 3</div>
+      <div id="hudCarry" class="hud-carry" hidden></div>
+      <div id="hudSpotted" class="hud-spotted" hidden>
+        <span>The camera is spotting you</span>
+        <div class="meter"><div id="hudSpottedBar" class="meter-fill"></div></div>
+      </div>
+    </div>
+
+    <div class="hud-controls" aria-label="Controls">
+      <div><kbd>WASD</kbd> Move</div>
+      <div><kbd>SPACE</kbd> Jump</div>
+      <div><kbd>E</kbd> Interact</div>
+      <div><kbd>SHIFT</kbd> Sprint</div>
+    </div>
+
+    <div class="crosshair" aria-hidden="true"></div>
+    <div id="hudPrompt" class="hud-prompt" hidden></div>
+    <div id="hudToasts" class="hud-toasts" aria-live="polite"></div>
+
+    <div id="alarmBanner" class="alarm-banner" hidden>ALARM TRIGGERED</div>
+    <div id="lockHint" class="lock-hint" hidden>Click the game to look around. Press Esc to free your mouse.</div>
+  </div>
+
+  <!-- Heist complete -->
+  <div id="completeOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <h2 class="overlay-title">HEIST COMPLETE</h2>
+      <p id="completeStats" class="overlay-stats"></p>
+      <button id="restartBtn" class="btn btn-primary" type="button">Plan another heist</button>
+      <p class="overlay-note">Restarts the store for everyone in the room.</p>
+    </div>
+  </div>
+
+  <!-- Connection lost -->
+  <div id="lostOverlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <h2 class="overlay-title overlay-title-small">Connection lost</h2>
+      <p id="lostText" class="overlay-stats">The game server stopped responding.</p>
+      <button id="lostBtn" class="btn btn-primary" type="button">Back to start</button>
+    </div>
+  </div>
+
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

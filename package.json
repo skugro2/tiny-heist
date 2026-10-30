@@ -1,0 +1,16 @@
+{
+  "name": "tiny-heist",
+  "version": "0.1.0",
+  "description": "Tiny Heist: browser-based co-op multiplayer heist prototype (vertical slice).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
